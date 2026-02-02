@@ -37,9 +37,9 @@ def main(src_path, remove_src=False):
             # 文件名类似于 1701699 TRUE - Storyteller.osz，提取最开始的数字
             sid = binfo.split()[0]
 
-            # 检查目标路径下的文件夹是否有 sid 开头的，如有，发出警告
+            # 检查目标路径下的文件夹是否有重复的 SID ，如有，发出警告
             for dirname in os.listdir(STABLE_SONGS_PATH):
-                if dirname.startswith(sid):
+                if dirname.split()[0] == sid:
                     # 警告用红色加粗字体
                     print(
                         "\033[1;31m警告：目标路径下已存在同 SID 文件夹：%s\033[0m"
