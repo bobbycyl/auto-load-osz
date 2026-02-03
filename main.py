@@ -1,5 +1,5 @@
 import os
-from shutil import ReadError, rmtree
+from shutil import ReadError, copytree, rmtree
 from time import sleep
 
 from clayutil.futil import FolderMonitor, compress_as_zip
@@ -30,6 +30,7 @@ def _(event):
 
 
 def main(src_path, remove_src=False):
+    global runtime_downloaded
     try:
         basename = os.path.basename(src_path)
         binfo, ext = os.path.splitext(basename)
@@ -46,9 +47,17 @@ def main(src_path, remove_src=False):
                         % dirname
                     )
                     # 但是警告不影响程序正常执行
+                    break
+            else:
+                # 如果没有检测到重复的，才加入 runtime_downloaded
+                # 这样避免清理的时候把现有的谱面删了
+                runtime_downloaded.add(binfo)
 
             # 解压到目标路径
             extract_innermost(src_path, os.path.join(NEOSU_MAPS_PATH, binfo), True)
+            # patch: 同时复制一份到 stable Songs，这样可以不操作 neosu 数据库
+            if STABLE_SONGS_PATH != "":
+                copytree(os.path.join(NEOSU_MAPS_PATH, binfo), os.path.join(STABLE_SONGS_PATH, binfo))
             if remove_src:
                 # 删除源文件
                 os.remove(src_path)
@@ -60,6 +69,7 @@ def main(src_path, remove_src=False):
 monitor.start()
 print("监控已启动")
 print("监控目录：%s\n目标目录：%s" % (MONITOR_PATH, NEOSU_MAPS_PATH))
+runtime_downloaded: set[str] = set()
 try:
     while True:
         sleep(3)
@@ -70,6 +80,12 @@ monitor.shutdown_thread_pool(False)
 print("监控已停止")
 
 if STABLE_SONGS_PATH != "":
+    # 清理 runtime_downloaded（虽然这么做可能是多余的？）
+    for runtime_binfo in runtime_downloaded:
+        if os.path.exists(os.path.join(STABLE_SONGS_PATH, runtime_binfo)):
+            rmtree(os.path.join(STABLE_SONGS_PATH, runtime_binfo))
+
+    # 询问是否重打包
     repack_after_input = input("重打包谱面至 stable Songs？ (y/[n]) ")
     if repack_after_input.lower() == "y":
         for dirname in os.listdir(NEOSU_MAPS_PATH):

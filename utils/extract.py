@@ -4,19 +4,23 @@ import tempfile
 from pathlib import Path
 
 
-def find_deepest_dirs(root_path: Path) -> list[tuple[int, Path]]:
+def find_deepest_osu_dirs(root_path: Path) -> list[tuple[int, Path]]:
     """
-    找到目录树中最深的目录（叶子目录）
+    找到包含 .osu 文件的最深目录（不一定是叶子节点）
     返回: [(depth, dir_path), ...]
     """
     deepest: list[tuple[int, Path]] = []
     max_depth = -1
+    root_str = str(root_path)
 
     for root, dirs, files in os.walk(root_path):
-        current_depth = root.count(os.sep) - str(root_path).count(os.sep)
+        # 统一路径分隔符计算深度
+        current_depth = root.replace("\\", "/").count("/") - root_str.replace("\\", "/").count("/")
 
-        # 如果没有子目录，就是叶子目录
-        if not dirs:
+        # 检查是否包含 .osu 文件
+        has_osu = any(f.endswith(".osu") for f in files)
+        
+        if has_osu:
             if current_depth > max_depth:
                 max_depth = current_depth
                 deepest = [(current_depth, Path(root))]
@@ -48,7 +52,7 @@ def extract_innermost(zip_path: str, output_name: str, exist_ok: bool = False):
         shutil.unpack_archive(_zip_path, temp_path, format="zip")
 
         # 找到最内层目录
-        deepest_dirs = find_deepest_dirs(temp_path)
+        deepest_dirs = find_deepest_osu_dirs(temp_path)
 
         if not deepest_dirs:
             raise ValueError("压缩包内没有找到任何目录")
