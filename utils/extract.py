@@ -15,11 +15,13 @@ def find_deepest_osu_dirs(root_path: Path) -> list[tuple[int, Path]]:
 
     for root, dirs, files in os.walk(root_path):
         # 统一路径分隔符计算深度
-        current_depth = root.replace("\\", "/").count("/") - root_str.replace("\\", "/").count("/")
+        current_depth = root.replace("\\", "/").count("/") - root_str.replace(
+            "\\", "/"
+        ).count("/")
 
         # 检查是否包含 .osu 文件
         has_osu = any(f.endswith(".osu") for f in files)
-        
+
         if has_osu:
             if current_depth > max_depth:
                 max_depth = current_depth

@@ -30,7 +30,6 @@ def _(event):
 
 
 def main(src_path, remove_src=False):
-    global runtime_downloaded
     try:
         basename = os.path.basename(src_path)
         binfo, ext = os.path.splitext(basename)
@@ -48,16 +47,21 @@ def main(src_path, remove_src=False):
                     )
                     # 但是警告不影响程序正常执行
                     break
-            else:
-                # 如果没有检测到重复的，才加入 runtime_downloaded
-                # 这样避免清理的时候把现有的谱面删了
-                runtime_downloaded.add(binfo)
 
             # 解压到目标路径
             extract_innermost(src_path, os.path.join(NEOSU_MAPS_PATH, binfo), True)
-            # patch: 同时复制一份到 stable Songs，这样可以不操作 neosu 数据库
-            if STABLE_SONGS_PATH != "":
-                copytree(os.path.join(NEOSU_MAPS_PATH, binfo), os.path.join(STABLE_SONGS_PATH, binfo))
+
+            # 重打包 2 份（新版的 neosu 在这种情况下行为更正常）
+            compress_as_zip(
+                os.path.join(NEOSU_MAPS_PATH, binfo),
+                os.path.join(NEOSU_MAPS_PATH, binfo + ".osz"),
+            )
+            compress_as_zip(
+                os.path.join(NEOSU_MAPS_PATH, binfo),
+                os.path.join(STABLE_SONGS_PATH, binfo + ".osz"),
+            )
+
+            rmtree(os.path.join(NEOSU_MAPS_PATH, binfo))
             if remove_src:
                 # 删除源文件
                 os.remove(src_path)
@@ -66,10 +70,19 @@ def main(src_path, remove_src=False):
         print("解压失败：%s" % basename)
 
 
+def clear_folder(folder_path):
+    """清空文件夹，保留空文件夹"""
+    for item in os.listdir(folder_path):
+        item_path = os.path.join(folder_path, item)
+        if os.path.isfile(item_path):
+            os.remove(item_path)  # 删除文件
+        elif os.path.isdir(item_path):
+            rmtree(item_path)  # 递归删除子文件夹
+
+
 monitor.start()
 print("监控已启动")
 print("监控目录：%s\n目标目录：%s" % (MONITOR_PATH, NEOSU_MAPS_PATH))
-runtime_downloaded: set[str] = set()
 try:
     while True:
         sleep(3)
@@ -79,22 +92,13 @@ except KeyboardInterrupt:
 monitor.shutdown_thread_pool(False)
 print("监控已停止")
 
-if STABLE_SONGS_PATH != "":
-    # 清理 runtime_downloaded（虽然这么做可能是多余的？）
-    for runtime_binfo in runtime_downloaded:
-        if os.path.exists(os.path.join(STABLE_SONGS_PATH, runtime_binfo)):
-            rmtree(os.path.join(STABLE_SONGS_PATH, runtime_binfo))
-
-    # 询问是否重打包
-    repack_after_input = input("重打包谱面至 stable Songs？ (y/[n]) ")
-    if repack_after_input.lower() == "y":
-        for dirname in os.listdir(NEOSU_MAPS_PATH):
-            compress_as_zip(
-                os.path.join(NEOSU_MAPS_PATH, dirname),
-                os.path.join(STABLE_SONGS_PATH, dirname + ".osz"),
-            )
-            # 删除源文件夹
-            rmtree(os.path.join(NEOSU_MAPS_PATH, dirname))
-            print("已重打包：%s" % dirname)
-    else:
-        print("已放弃重打包")
+# 询问是否重置 neosu maps 数据
+reset_neosu_maps = input(
+    "谱面已重打包至 stable Songs，是否重置 neosu maps 以节约空间？ (y/[n]) "
+)
+if reset_neosu_maps.lower() == "y":
+    os.remove(os.path.join(NEOSU_MAPS_PATH, "..", "neosu_maps.db"))
+    clear_folder(NEOSU_MAPS_PATH)
+    print("已重置 neosu maps")
+else:
+    print("已放弃重打包")
