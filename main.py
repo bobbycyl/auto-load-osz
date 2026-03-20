@@ -1,4 +1,5 @@
 import os
+from queue import Queue
 from shutil import ReadError, copytree, rmtree
 from time import sleep
 
@@ -15,21 +16,23 @@ NEOSU_MAPS_PATH = os.path.join(
     HOME_PATH, ".local", "share", "neosu", "maps"
 )  # ~/.local/share/neosu/maps/
 REMOVE_SRC = True  # 解压后自动删除原始 osz
+KEEP_WITHOUT_ASK = False  # 无需请求用户，自动复制一份 osz 到 stable Songs
 
 monitor = FolderMonitor(MONITOR_PATH, False)
+q = Queue()
 
 
 @monitor.on_event("created", False)
 def _(event):
-    main(event["src_path"], REMOVE_SRC)
+    q.put(event["src_path"])
 
 
 @monitor.on_event("moved", False)
 def _(event):
-    main(event["dest_path"], REMOVE_SRC)
+    q.put(event["dest_path"])
 
 
-def main(src_path, remove_src=False):
+def main(src_path):  # 必须在主线程执行
     try:
         basename = os.path.basename(src_path)
         binfo, ext = os.path.splitext(basename)
@@ -42,7 +45,7 @@ def main(src_path, remove_src=False):
                 if dirname.split()[0] == sid:
                     # 警告用红色加粗字体
                     print(
-                        "\033[1;31m警告：目标路径下已存在同 SID 文件夹：%s\033[0m"
+                        "\033[1;33m警告：\033[0m目标路径下已存在同 SID 文件夹：%s"
                         % dirname
                     )
                     # 但是警告不影响程序正常执行
@@ -56,13 +59,19 @@ def main(src_path, remove_src=False):
                 os.path.join(NEOSU_MAPS_PATH, binfo),
                 os.path.join(NEOSU_MAPS_PATH, binfo + ".osz"),
             )
-            compress_as_zip(
-                os.path.join(NEOSU_MAPS_PATH, binfo),
-                os.path.join(STABLE_SONGS_PATH, binfo + ".osz"),
-            )
+            cp2songs = KEEP_WITHOUT_ASK
+            if not KEEP_WITHOUT_ASK:
+                keep = input("\033[1m是否保留该谱面？ [%s] (y/[n]) \033[0m" % binfo)
+                if keep.lower() == "y":
+                    cp2songs = True
+            if cp2songs:
+                compress_as_zip(
+                    os.path.join(NEOSU_MAPS_PATH, binfo),
+                    os.path.join(STABLE_SONGS_PATH, binfo + ".osz"),
+                )
 
             rmtree(os.path.join(NEOSU_MAPS_PATH, binfo))
-            if remove_src:
+            if REMOVE_SRC:
                 # 删除源文件
                 os.remove(src_path)
                 print("已解压并删除源文件：%s" % binfo)
@@ -85,8 +94,7 @@ print("监控已启动")
 print("监控目录：%s\n目标目录：%s" % (MONITOR_PATH, NEOSU_MAPS_PATH))
 try:
     while True:
-        sleep(3)
-        pass
+        main(q.get())
 except KeyboardInterrupt:
     monitor.stop()
 monitor.shutdown_thread_pool(False)
@@ -94,11 +102,14 @@ print("监控已停止")
 
 # 询问是否重置 neosu maps 数据
 reset_neosu_maps = input(
-    "谱面已重打包至 stable Songs，是否重置 neosu maps 以节约空间？ (y/[n]) "
+    "\033[1m是否重置 neosu maps？ (y/[n]) \033[0m"
 )
 if reset_neosu_maps.lower() == "y":
-    os.remove(os.path.join(NEOSU_MAPS_PATH, "..", "neosu_maps.db"))
+    if os.path.exists(
+        neosu_maps_db := os.path.join(NEOSU_MAPS_PATH, "..", "neosu_maps.db")
+    ):
+        os.remove(neosu_maps_db)
     clear_folder(NEOSU_MAPS_PATH)
     print("已重置 neosu maps")
 else:
-    print("已放弃重打包")
+    print("已放弃操作")
